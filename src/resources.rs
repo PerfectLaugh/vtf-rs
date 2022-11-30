@@ -2,7 +2,7 @@ use crate::Error;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResourceType {
     id: [u8; 3],
     flags: u8,
@@ -87,8 +87,7 @@ impl ResourceList {
     pub fn write(&self, bytes: &mut impl Write) -> Result<(), Error> {
         self.resources
             .iter()
-            .map(|resource| resource.write(bytes))
-            .collect::<Result<(), Error>>()
+            .try_for_each(|resource| resource.write(bytes))
     }
 
     pub fn get_by_type(&self, ty: ResourceType) -> Option<&Resource> {

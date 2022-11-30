@@ -1,10 +1,10 @@
 use crate::header::VTFHeader;
 use crate::utils::get_offset;
 use crate::Error;
-use image::dxt::{DxtDecoder, DXTVariant};
-use image::{DynamicImage, ImageBuffer, ImageDecoder, Pixel};
+use image::{DynamicImage, ImageBuffer, Pixel};
 use num_enum::TryFromPrimitive;
 use parse_display::Display;
+use squish::Format as SquishFormat;
 use std::ops::Deref;
 use std::vec::Vec;
 
@@ -46,10 +46,15 @@ impl<'a> VTFImage<'a> {
         Ok(&self.bytes[base..base + frame_size])
     }
 
-    fn decode_dxt(&self, bytes: &[u8], variant: DXTVariant) -> Result<Vec<u8>, Error> {
-        let mut output: Vec<u8> = Vec::new();
-        DxtDecoder::new(bytes, self.width as u32, self.height as u32, variant)?.read_image(&mut output)?;
-        Ok(output.to_vec())
+    fn decode_dxt(&self, bytes: &[u8], variant: SquishFormat) -> Result<Vec<u8>, Error> {
+        let mut output: Vec<u8> = vec![0; self.width as usize * self.height as usize * 4];
+        variant.decompress(
+            bytes,
+            self.width as usize,
+            self.height as usize,
+            &mut output,
+        );
+        Ok(output)
     }
 
     fn image_from_buffer<P, Container, F>(
@@ -72,35 +77,33 @@ impl<'a> VTFImage<'a> {
         let bytes = self.get_frame(frame)?;
         match self.format {
             ImageFormat::Dxt1 => {
-                let buf = self.decode_dxt(bytes, DXTVariant::DXT1)?;
+                let buf = self.decode_dxt(bytes, SquishFormat::Bc1)?;
                 self.image_from_buffer(buf, DynamicImage::ImageRgb8)
             }
             ImageFormat::Dxt1Onebitalpha => {
-                let buf = self.decode_dxt(bytes, DXTVariant::DXT1)?;
+                let buf = self.decode_dxt(bytes, SquishFormat::Bc1)?;
                 self.image_from_buffer(buf, DynamicImage::ImageRgba8)
             }
             ImageFormat::Dxt3 => {
-                let buf = self.decode_dxt(bytes, DXTVariant::DXT3)?;
+                let buf = self.decode_dxt(bytes, SquishFormat::Bc2)?;
                 self.image_from_buffer(buf, DynamicImage::ImageRgba8)
             }
             ImageFormat::Dxt5 => {
-                let buf = self.decode_dxt(bytes, DXTVariant::DXT5)?;
+                let buf = self.decode_dxt(bytes, SquishFormat::Bc3)?;
                 self.image_from_buffer(buf, DynamicImage::ImageRgba8)
             }
-            ImageFormat::Rgba8888 => {
-                self.image_from_buffer(bytes.to_vec(), DynamicImage::ImageRgba8)
-            }
-            ImageFormat::Rgb888 => self.image_from_buffer(bytes.to_vec(), DynamicImage::ImageRgb8),
-            ImageFormat::Bgr888 => self.image_from_buffer(bytes.to_vec(), DynamicImage::ImageBgr8),
-            ImageFormat::Bgra8888 => {
-                self.image_from_buffer(bytes.to_vec(), DynamicImage::ImageBgra8)
-            }
+            ImageFormat::Rgba8888 => self.image_from_buffer(bytes.into(), DynamicImage::ImageRgba8),
+            ImageFormat::Rgb888 => self.image_from_buffer(bytes.into(), DynamicImage::ImageRgb8),
+            // ImageFormat::Bgr888 => self.image_from_buffer(bytes.to_vec(), DynamicImage::ImageBgr8),
+            // ImageFormat::Bgra8888 => {
+            //     self.image_from_buffer(bytes.to_vec(), DynamicImage::ImageBgra8)
+            // }
             _ => Err(Error::UnsupportedImageFormat(self.format)),
         }
     }
 }
 
-#[derive(Debug, Display, Clone, Copy, PartialEq, TryFromPrimitive)]
+#[derive(Debug, Display, Clone, Copy, TryFromPrimitive)]
 #[repr(i16)]
 pub enum ImageFormat {
     None = -1,
@@ -142,7 +145,7 @@ impl ImageFormat {
             ImageFormat::Rgb888 => Ok(width * height * 3),
             ImageFormat::Bgr888 => Ok(width * height * 3),
             ImageFormat::Rgb565 => Ok(width * height * 2),
-            ImageFormat::I8 => Ok(width * height * 1),
+            ImageFormat::I8 => Ok(width * height),
             ImageFormat::Ia88 => Ok(width * height * 2),
             ImageFormat::A8 => Ok(width * height),
             ImageFormat::Argb8888 => Ok(width * height * 4),

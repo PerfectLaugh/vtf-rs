@@ -2,8 +2,8 @@ use crate::header::VTFHeader;
 use crate::image::{ImageFormat, VTFImage};
 use crate::resources::{ResourceList, ResourceType};
 use crate::Error;
-use image::dxt::{DxtEncoder, DXTVariant};
-use image::{DynamicImage, GenericImageView};
+use image::DynamicImage;
+use squish::{Format as SquishFormat, Params as SquishParams};
 use std::io::Cursor;
 use std::vec::Vec;
 
@@ -118,23 +118,33 @@ impl<'a> VTF<'a> {
         match image_format {
             ImageFormat::Dxt5 => {
                 let image_data = image.to_rgba8();
-                let encoder = DxtEncoder::new(&mut data);
-                encoder.encode(
+                let format = SquishFormat::Bc3;
+                let compressed_size =
+                    format.compressed_size(header.width as usize, header.height as usize);
+                let mut compressed = vec![0; compressed_size];
+                format.compress(
                     &image_data,
-                    header.width as u32,
-                    header.height as u32,
-                    DXTVariant::DXT5,
-                )?;
+                    header.width as usize,
+                    header.height as usize,
+                    SquishParams::default(),
+                    &mut compressed,
+                );
+                data.extend(compressed);
             }
-            ImageFormat::Dxt1Onebitalpha => {
+            ImageFormat::Dxt1 => {
                 let image_data = image.to_rgba8();
-                let encoder = DxtEncoder::new(&mut data);
-                encoder.encode(
+                let format = SquishFormat::Bc1;
+                let compressed_size =
+                    format.compressed_size(header.width as usize, header.height as usize);
+                let mut compressed = vec![0; compressed_size];
+                format.compress(
                     &image_data,
-                    header.width as u32,
-                    header.height as u32,
-                    DXTVariant::DXT1,
-                )?;
+                    header.width as usize,
+                    header.height as usize,
+                    SquishParams::default(),
+                    &mut compressed,
+                );
+                data.extend(compressed);
             }
             ImageFormat::Rgba8888 => {
                 let image_data = image.to_rgba8();
